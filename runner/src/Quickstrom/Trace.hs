@@ -15,7 +15,7 @@
 
 module Quickstrom.Trace
   ( Selected (..),
-    Action (..),
+    BaseAction (..),
     ObservedState (..),
     Trace (..),
     ActionResult (..),
@@ -61,7 +61,7 @@ traceElements = position @1
 observedStates :: Traversal' (Trace ann) ObservedState
 observedStates = traceElements . traverse . _Ctor @"TraceState" . position @2
 
-traceActions :: Traversal' (Trace ann) (Action Selected)
+traceActions :: Traversal' (Trace ann) Action
 traceActions = traceElements . traverse . _Ctor @"TraceAction" . position @2
 
 traceActionFailures :: Traversal' (Trace ann) Text
@@ -74,7 +74,7 @@ data ActionResult = ActionSuccess | ActionFailed Text | ActionImpossible
   deriving (Show, Generic, ToJSON)
 
 data TraceElement ann
-  = TraceAction ann (Action Selected) ActionResult
+  = TraceAction ann Action ActionResult
   | TraceState ann ObservedState
   -- TODO: `TraceEvent` when queried DOM nodes change
   deriving (Show, Generic, ToJSON)
