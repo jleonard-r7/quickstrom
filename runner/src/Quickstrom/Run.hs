@@ -244,10 +244,17 @@ sizes :: CheckOptions -> [Size]
 sizes CheckOptions {checkMaxActions = Size maxActions, checkTests} =
   map (\n -> Size (n * maxActions `div` fromIntegral checkTests)) [1 .. fromIntegral checkTests]
 
+defaultAwaitSecs :: Int
+defaultAwaitSecs = 10
+
 beforeRun :: (MonadIO m, WebDriver m, Specification spec) => spec -> Runner m ()
 beforeRun spec = do
   navigateToOrigin
-  awaitElement (readyWhen spec)
+  do
+    res <- awaitElement defaultAwaitSecs (readyWhen spec)
+    case res of
+      ActionFailed s -> fail $ Text.unpack s
+      _ -> pass
 
 takeWhileChanging :: (Eq a, Functor m) => Pipe a a m ()
 takeWhileChanging = Pipes.await >>= loop
@@ -257,7 +264,7 @@ takeWhileChanging = Pipes.await >>= loop
       next <- Pipes.await
       if next == prev then pass else loop next
 
-observeManyStatesAfter :: WebDriver m => Queries -> Action -> Pipe a (TraceElement ()) (Runner m) ()
+observeManyStatesAfter :: (MonadIO m, WebDriver m) => Queries -> Action -> Pipe a (TraceElement ()) (Runner m) ()
 observeManyStatesAfter queries' action = do
   CheckEnv {checkScripts = scripts, checkOptions = CheckOptions {checkMaxTrailingStateChanges, checkTrailingStateChangeTimeout}} <- lift ask
   lift (runCheckScript (registerNextStateObserver scripts checkTrailingStateChangeTimeout queries'))
@@ -286,7 +293,7 @@ observeManyStatesAfter queries' action = do
       loop (mapTimeout (* 2) timeout)
 
 {-# SCC runActions' "runActions'" #-}
-runActions' :: (WebDriver m, Specification spec) => spec -> Pipe Action (TraceElement ()) (Runner m) ()
+runActions' :: (MonadIO m, WebDriver m, Specification spec) => spec -> Pipe Action (TraceElement ()) (Runner m) ()
 runActions' spec = do
   scripts <- lift (asks checkScripts)
   state1 <- lift (runCheckScript (observeState scripts queries'))
@@ -364,6 +371,8 @@ selectValidBaseAction (isSeqTail, possibleAction) =
       active <- isActiveInput
       if isSeqTail || active then (pure (Just (EnterText t))) else pure Nothing
     Navigate p -> pure (Just (Navigate p))
+    Await sel -> pure (Just (Await sel))
+    AwaitSecs t -> pure (Just (AwaitSecs t))
     Focus sel -> selectOne sel Focus (if isSeqTail then alwaysTrue else isNotActive)
     Click sel -> selectOne sel Click (if isSeqTail then alwaysTrue else isClickable)
   where
@@ -422,15 +431,17 @@ focus =
     Just e -> tryAction (ActionSuccess <$ (elementSendKeys "" e))
     Nothing -> pure ActionImpossible
 
-runBaseAction :: WebDriver m => BaseAction Selected -> Runner m ActionResult
+runBaseAction :: (MonadIO m, WebDriver m) => BaseAction Selected -> Runner m ActionResult
 runBaseAction = \case
   Focus s -> focus s
   KeyPress c -> sendKey c
   EnterText t -> sendKeys t
   Click s -> click s
+  Await s -> awaitElement defaultAwaitSecs s
+  AwaitSecs (i, s) -> awaitElement i s
   Navigate uri -> tryAction (ActionSuccess <$ navigateTo uri)
 
-runAction :: WebDriver m => Action -> Runner m ActionResult
+runAction :: (MonadIO m, WebDriver m) => Action -> Runner m ActionResult
 runAction = \case
     [] -> do pure ActionImpossible
     (h:[]) -> runBaseAction h
@@ -447,14 +458,15 @@ findSelected :: WebDriver m => Selected -> Runner m (Maybe Element)
 findSelected (Selected s i) =
   findAll s >>= \es -> pure ((es ^? ix i))
 
-awaitElement :: (MonadIO m, WebDriver m) => Selector -> Runner m ()
-awaitElement sel@(Selector s) =
+awaitElement :: (MonadIO m, WebDriver m) => Int -> Selector -> Runner m ActionResult
+awaitElement secondsTimeout sel@(Selector s) =
   let loop n
-        | n > 10 = fail ("Giving up after having waited 10 seconds for selector to match an element: " <> toS s)
+        | n > secondsTimeout =
+          pure $ ActionFailed ("Giving up after having waited 10 seconds for selector to match an element: " <> toS s)
         | otherwise =
           findAll sel >>= \case
             [] -> liftIO (threadDelay 1000000) >> loop (n + 1)
-            _ -> pass
+            _ -> pure ActionSuccess
    in loop (1 :: Int)
 
 readScripts :: MonadIO m => m CheckScripts
