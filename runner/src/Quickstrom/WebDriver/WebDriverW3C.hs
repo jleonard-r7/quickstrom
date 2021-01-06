@@ -122,7 +122,7 @@ runIsolated ::
   WebDriverW3C m a ->
   WebDriverW3C m a
 runIsolated opts (WebDriverW3C theSession) = WebDriverW3C . cleanupOnError $ do
-  sid <- newSession' (addCaps opts) emptyCapabilities
+  sid <- newSession' (JSON.toJSON . (addDesiredCaps opts) . (addCaps opts)) emptyCapabilities
   modifyState (setSessionId (Just sid))
   a <- theSession
   deleteSession
@@ -175,6 +175,12 @@ addCaps WebDriverOptions {webDriverBrowser = Chrome, webDriverBrowserBinary, web
              ("browserName", "chrome")
            ]
        )
+
+addDesiredCaps :: WebDriverOptions -> JSON.Value -> JSON.Value
+addDesiredCaps WebDriverOptions {webDriverBrowser = Firefox} = identity
+addDesiredCaps WebDriverOptions {webDriverBrowser = Chrome} =
+  key "desiredCapabilities" . _Object
+    %~ ( <> [( "goog:loggingPrefs", JSON.Object [ ("browser", "ALL") ])])
 
 -- | Same as the non-exported definition in 'Web.Api.WebDriver.Endpoints'.
 cleanupOnError ::
