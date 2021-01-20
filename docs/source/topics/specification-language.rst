@@ -208,10 +208,10 @@ actions are *possible* at each point an action is being picked.
 .. code-block::
 
    actions = [
-       Tuple 2 a1,
-       Tuple 1 a2,
-       Tuple 1 a3,
-       Tuple 1 a4
+       Tuple 2 $ Single a1,
+       Tuple 1 $ Single a2,
+       Tuple 1 $ Single a3,
+       Tuple 1 $ Single a4
      ]
 
 The ``Action`` data type is defined in the Quickstrom library, along with
@@ -222,7 +222,7 @@ some aliases for common actions. For instance, here's the definition of
 
    -- | Generate focus actions on common focusable elements.
    foci :: Actions
-   foci = [ Tuple 1 (Focus "input"), Tuple 1 (Focus "textarea") ]
+   foci = [ Tuple 1 (Single $ Focus "input"), Tuple 1 (Single $ Focus "textarea") ]
 
 More action constructors and aliases should be introduced as Quickstrom
 evolves.
